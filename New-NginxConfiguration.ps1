@@ -5,7 +5,7 @@ param (
         -not [string]::IsNullOrEmpty( $_ ) -and ( Test-Path -Path $_ ) -and ( Test-Path -Path $_ -PathType Container )
     })]
     [string]
-    $WorkingDirectory = $PSScriptRoot,
+    $WorkingDirectory = $PWD.Path,
     
     [Parameter( ParameterSetName = 'WorkingDirectory' )]
     [ValidateNotNullOrEmpty()]

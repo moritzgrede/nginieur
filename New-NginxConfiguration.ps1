@@ -29,7 +29,12 @@ param (
         -not [string]::IsNullOrEmpty( $_ ) -and ( Test-Path -Path $_ ) -and ( Test-Path -Path $_ -PathType Leaf )
     })]
     [string]
-    $NginxConfigurationDestinationFile
+    $NginxConfigurationDestinationFile,
+
+    # Maximum recursion depth for includes. -1 disables the limit. Default is 99.
+    [ValidateRange( -1, [int]::MaxValue )]
+    [int]
+    $Depth = 99
 )
 begin {
     #region VARIABLES
@@ -61,6 +66,12 @@ begin {
             [System.Object[]]
             $Content
         )
+        begin {
+            $CallStackDepth = ( Get-PSCallStack | Where-Object -Property Command -EQ -Value 'Parse-Content' | Measure-Object ).Count - 1  # Subtract 1 to not count initial call
+            if ( $Depth -ge 0 -and $CallStackDepth -gt $Depth ) {
+                throw [System.InvalidOperationException]::new( "Maximum include depth of $( $Depth ) exceeded." )
+            }
+        }
         process {
             $Index = -1  # Initialize line index at -1, because we increment at the start of the loop
             foreach ( $Line in $Content.Clone() ) {
@@ -79,10 +90,14 @@ begin {
                             throw [System.IO.FileNotFoundException]::new( "Included file not found at path: $( $FilePath )" )
                             continue
                         }
-                        $Content[ $Index ] = @"
-# Included from file: $( $Value )
-$( Parse-Content -Content ( Get-Content -LiteralPath $FilePath ) )
-"@
+                        try {
+                            $RecursiveContent = Parse-Content -Content ( Get-Content -LiteralPath $FilePath )
+                            $RecursiveContent = "# Included from file: $( $Value )", $RecursiveContent -join [System.Environment]::NewLine
+                        } catch [System.InvalidOperationException] {
+                            Write-Warning "Maximum include depth of $( $Depth ) exceeded."
+                            $RecursiveContent = "#$( $Line )"
+                        }
+                        $Content[ $Index ] = $RecursiveContent
                         break
                     }
                     default {

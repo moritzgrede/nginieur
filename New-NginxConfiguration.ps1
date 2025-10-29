@@ -96,7 +96,7 @@ begin {
                         }
                         try {
                             $RecursiveContent = Parse-Content -Content ( Get-Content -LiteralPath $FilePath )
-                            $RecursiveContent = "# Included from file: $( $Value )", $RecursiveContent -join [System.Environment]::NewLine
+                            $RecursiveContent = "# $( '>' * ( $CallStackDepth + 1 ) ) Included from file: $( $Value )", $RecursiveContent, "# $( '<' * ( $CallStackDepth + 1 ) ) $( $Value )" -join [System.Environment]::NewLine
                         } catch [System.InvalidOperationException] {
                             Write-Warning "Maximum include depth of $( $Depth ) exceeded."
                             $RecursiveContent = "#$( $Line )"

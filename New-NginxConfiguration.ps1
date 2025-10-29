@@ -65,7 +65,7 @@ begin {
 
     #region FUNCTIONS
     function Parse-Content {
-        [OutputType( [string] )]
+        [OutputType( [string[]] )]
         param (
             [System.Object[]]
             $Content
@@ -78,43 +78,59 @@ begin {
         }
         process {
             $Index = -1  # Initialize line index at -1, because we increment at the start of the loop
+            $NewContent = @()
             foreach ( $Line in $Content.Clone() ) {
                 $Index++
-                $Line = $Line.Trim()
-                if ( $Line -like '#*' -or [string]::IsNullOrWhiteSpace( $Line ) ) { continue }
-                $Match = [regex]::Match( $Line, '^(?<Keyword>\w+)\s+(?<Value>.+?);$' )
-                if ( -not $Match.Success ) { continue }
+                if ( $Line -match '^\s*#' -or [string]::IsNullOrWhiteSpace( $Line ) ) {
+                    # Line is empty or a comment, preserve as-is with correct indentation
+                    $NewContent += $Line
+                    continue
+                }
+                $Match = [regex]::Match( $Line, '^(?<Indentation>\s*)(?<Keyword>\w+)\s+(?<Value>.+?);$' )
+                if ( -not $Match.Success ) {
+                    # Line does not match expected pattern, preserve as-is with correct indentation
+                    $NewContent += $Line
+                    continue
+                }
                 $Keyword = $Match.Groups['Keyword'].Value
-                if ( $Keyword -notin $Keywords.Keys ) { continue }
+                if ( $Keyword -notin $Keywords.Keys ) {
+                    # Line does not contain a recognized keyword, preserve as-is with correct indentation
+                    $NewContent += $Line
+                    continue
+                }
+                $Indentation = $Match.Groups['Indentation'].Value
                 $Value = $Match.Groups['Value'].Value
                 switch ( $Keywords[ $Keyword] ) {
                     'file' {
+                        # Handle file include
                         $FilePath = Join-Path -Path $WorkingDirectory -ChildPath $Value
-                        if ( -not ( Test-Path -Path $FilePath ) ) {
-                            throw [System.IO.FileNotFoundException]::new( "Included file not found at path: $( $FilePath )" )
-                            continue
-                        }
                         try {
-                            $RecursiveContent = Parse-Content -Content ( Get-Content -LiteralPath $FilePath )
-                            $RecursiveContent = @(
-                                "# $( '>' * ( $CallStackDepth + 1 ) ) Included from file: $( $Value )",
-                                $RecursiveContent,
-                                "# $( '<' * ( $CallStackDepth + 1 ) ) $( $Value )"
-                            ) -join [System.Environment]::NewLine
+                            if ( -not ( Test-Path -Path $FilePath ) ) {
+                                throw [System.IO.FileNotFoundException]::new( "Included file not found at path: $( $FilePath )" )
+                            }
+                            # File found, parse its content recursively
+                            $NewContent += "$( $Indentation )# $( '>' * ( $CallStackDepth + 1 ) ) Included from file: $( $Value )"
+                            Parse-Content -Content ( Get-Content -LiteralPath $FilePath ) | ForEach-Object { $NewContent += "$( $Indentation )$( $_ )" }
+                            $NewContent += "$( $Indentation )# $( '<' * ( $CallStackDepth + 1 ) ) $( $Value )"
+                        } catch [System.IO.FileNotFoundException] {
+                            # File not found, comment out the include line
+                            Write-Error $_.Exception.Message
+                            $NewContent += "$( $Indentation )#$( $Line )  # File not found!"
                         } catch [System.InvalidOperationException] {
+                            # Maximum depth exceeded, comment out the include line
                             Write-Warning "Maximum include depth of $( $Depth ) exceeded."
-                            $RecursiveContent = "#$( $Line )"
+                            $NewContent += "$( $Indentation )#$( $Line )  # Maximum depth exceeded!"
                         }
-                        $Content[ $Index ] = $RecursiveContent
                         break
                     }
                     default {
                         Write-Warning "Unhandled keyword type: $( $Keywords[ $Keyword ] )"
+                        $NewContent += $Line
                         break
                     }
                 }
             }
-            $Content -join [System.Environment]::NewLine
+            $NewContent
         }
     }
 }
@@ -128,6 +144,6 @@ process {
 
 "@
     }
-    $NginxConfiguration += Parse-Content -Content ( Get-Content -LiteralPath $ScriptNginxConfigurationFile )
+    $NginxConfiguration += ( ( Parse-Content -Content ( Get-Content -LiteralPath $ScriptNginxConfigurationFile ) ) -join [System.Environment]::NewLine )
     New-Item -ItemType File -Path $ScriptNginxConfigurationDestinationFile -Value $NginxConfiguration -Force | Out-Null
 }

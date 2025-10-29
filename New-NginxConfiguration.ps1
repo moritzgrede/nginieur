@@ -109,9 +109,13 @@ begin {
                                 throw [System.IO.FileNotFoundException]::new( "Included file not found at path: $( $FilePath )" )
                             }
                             # File found, parse its content recursively
-                            $NewContent += "$( $Indentation )# $( '>' * ( $CallStackDepth + 1 ) ) Included from file: $( $Value )"
+                            if ( -not $NoMetadata ) {
+                                $NewContent += "$( $Indentation )# $( '>' * ( $CallStackDepth + 1 ) ) Included from file: $( $Value )"
+                            }
                             Parse-Content -Content ( Get-Content -LiteralPath $FilePath ) | ForEach-Object { $NewContent += "$( $Indentation )$( $_ )" }
-                            $NewContent += "$( $Indentation )# $( '<' * ( $CallStackDepth + 1 ) ) $( $Value )"
+                            if ( -not $NoMetadata ) {
+                                $NewContent += "$( $Indentation )# $( '<' * ( $CallStackDepth + 1 ) ) $( $Value )"
+                            }
                         } catch [System.IO.FileNotFoundException] {
                             # File not found, comment out the include line
                             Write-Error $_.Exception.Message

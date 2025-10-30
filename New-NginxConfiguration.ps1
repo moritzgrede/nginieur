@@ -1,3 +1,20 @@
+<#
+.SYNOPSIS
+Dynamic and modular nginx configuration generator.
+
+.DESCRIPTION
+Dynamically generate an nginx configuration file by parsing a template. At the moment only 'include' directives
+are supported, allowing for modular configuration files. Templates are parsed recursively up to a specified depth.
+
+.LINK
+https://github.com/moritzgrede/nginieur
+
+.NOTES
+Author: Moritz Grede
+Version: 1.0.0
+#>
+
+
 [CmdletBinding( DefaultParameterSetName = 'WorkingDirectory' )]
 param (
     [Parameter( ParameterSetName = 'WorkingDirectory' )]
@@ -36,7 +53,7 @@ param (
     [int]
     $Depth = 99,
 
-    # Hide metadata information from top of file
+    # Hide metadata information
     [switch]
     $NoMetadata
 )
